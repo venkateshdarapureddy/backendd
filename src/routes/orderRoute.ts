@@ -17,12 +17,17 @@ export const orderRouter = new Elysia({ prefix: "/orders" })
       console.log(body);
       console.log("logging body");
       const { orderItems, deliveryAddress, totalPrice } = body;
+
+      // Generate unique order ID
       const orderId = "order_" + nanoid();
+
+      // Create a PaymentIntent with Stripe
       const paymentIntent = await stripeClient.paymentIntents.create({
-        amount: totalPrice * 100,
+        amount: totalPrice * 100, // Convert to smallest currency unit
         currency: "inr",
       });
 
+      // Create the order in the database
       const order = await prisma.order.create({
         data: {
           user: {
@@ -33,7 +38,7 @@ export const orderRouter = new Elysia({ prefix: "/orders" })
           id: orderId,
           deliveryAddress,
           deliveryStatus: "PENDING",
-          totalPrice: totalPrice,
+          totalPrice,
           paymentDetails: {
             amount: paymentIntent.amount,
           },
@@ -41,17 +46,18 @@ export const orderRouter = new Elysia({ prefix: "/orders" })
           paymentStatus: "PENDING",
         },
       });
+
+      // Create the associated order items
       const __orderItems = await prisma.orderItem.createMany({
-        data: orderItems.map((orderItem) => {
-          return {
-            orderId,
-            productId: orderItem.productId,
-            quantity: orderItem.quantity,
-            price: orderItem.price,
-          };
-        }),
+        data: orderItems.map((orderItem) => ({
+          orderId,
+          productId: orderItem.productId,
+          quantity: orderItem.quantity,
+          price: orderItem.price,
+        })),
       });
 
+      // Return the created order and client secret for Stripe
       return {
         order,
         clientSecret: paymentIntent.client_secret,
